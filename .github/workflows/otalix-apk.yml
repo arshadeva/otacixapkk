@@ -1,0 +1,46 @@
+name: Build Otalix APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: otalix-apk
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # Zip dari GitHub tidak membawa isi submodule, jadi diambil di sini bila kosong.
+      - name: Ambil metroproto dan libopus
+        run: |
+          [ -e metroproto/build.gradle.kts ] || { rm -rf metroproto; git clone --depth 1 https://github.com/MetrolistGroup/metroproto.git metroproto; }
+          L=opusDecoder/src/main/jni/libopus
+          [ -e "$L/CMakeLists.txt" ] || { rm -rf "$L"; git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git "$L"; }
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK debug
+        run: |
+          chmod +x gradlew
+          ./gradlew :androidApp:assembleDebug --no-daemon -Pmetrolist.sourceRevision= \
+            "-Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Otalix-debug-apk
+          path: androidApp/build/outputs/apk/debug/*.apk
